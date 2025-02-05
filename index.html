@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="shutterstock-1665254809.webp" type="image/x-icon">
+    <title>Interactive World Map of Khang Phan</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 300px;
+            padding: 15px;
+            background-color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        }
+        #search {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 300px;
+            z-index: 1000;
+        }
+        #search input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #copyright {
+            text-align: center;
+        }
+        #search-suggestions {
+            position: absolute;
+            top: 40px;
+            left: 0;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 100%;
+            z-index: 1000;
+            display: none;
+        }
+        #search-suggestions div {
+            padding: 10px;
+            cursor: pointer;
+        }
+        #search-suggestions div:hover {
+            background-color: #f0f0f0;
+        }
+        .leaflet-control-zoom {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+        }
+        #landmark {
+            margin-top: 15px;
+        }
+        #landmark img {
+            width: 100%;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="copyright">
+        <p>Copyright of Tuan Khang Phan khang18@usf.edu</p>
+    </div>
+    <div id="search">
+        <input type="text" id="searchBox" placeholder="Search for a country...">
+        <div id="search-suggestions"></div>
+    </div>
+    <div id="map"></div>
+    <div id="info">
+        <h2>Country Info</h2>
+        <p id="details">Click on a country to view its information.</p>
+        <div id="landmark"></div>
+    </div>
+    <div id="tooltip"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([20, 0], 2);
+
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+        }).addTo(map);
+
+        // Tooltip for country names
+        const tooltip = document.getElementById('tooltip');
+        const searchBox = document.getElementById('searchBox');
+        const searchSuggestions = document.getElementById('search-suggestions');
+        let highlightedLayer = null;
+
+        // Load GeoJSON data (simplified world map data)
+        fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+            .then(response => response.json())
+            .then(data => {
+                const geoJsonLayer = L.geoJSON(data, {
+                    onEachFeature: (feature, layer) => {
+                        // Show tooltip with country name on mouseover
+                        layer.on('mouseover', (e) => {
+                            const countryName = feature.properties.ADMIN;
+                            tooltip.style.display = 'block';
+                            tooltip.innerHTML = countryName;
+                            tooltip.style.left = e.originalEvent.pageX + 10 + 'px';
+                            tooltip.style.top = e.originalEvent.pageY + 10 + 'px';
+                            layer.setStyle({ fillOpacity: 0.7 });
+                        });
+
+                        // Hide tooltip on mouseout
+                        layer.on('mouseout', () => {
+                            tooltip.style.display = 'none';
+                            layer.setStyle({ fillOpacity: 0.5 });
+                        });
+
+                        // Update details on country click
+                        layer.on('click', () => {
+                            const countryName = feature.properties.ADMIN;
+                            fetch(`https://restcountries.com/v3.1/name/${countryName}`)
+                                .then(response => response.json())
+                                .then(countryData => {
+                                    const country = countryData[0];
+                                    const details = `
+                                        <strong>Name:</strong> ${country.name.common}<br>
+                                        <strong>Capital:</strong> ${country.capital ? country.capital[0] : 'N/A'}<br>
+                                        <strong>Population:</strong> ${country.population.toLocaleString()}<br>
+                                        <strong>Region:</strong> ${country.region}<br>
+                                        <strong>Flag:</strong> <img src="${country.flags.png}" alt="Flag of ${country.name.common}" style="width:50px; height:auto;">
+                                    `;
+                                    document.getElementById('details').innerHTML = details;
+
+                                    // Fetch and display landmark image
+                                })
+                                .catch(error => {
+                                    document.getElementById('details').innerHTML = 'Country information not found.';
+                                    console.error('Error fetching country data:', error);
+                                });
+                        });
+                    },
+                    style: (feature) => {
+                        return {
+                            color: '#3388ff',
+                            weight: 1,
+                            fillOpacity: 0.5,
+                            fillColor: '#' + Math.floor(Math.random()*16777215).toString(16) // Random color for countries
+                        };
+                    }
+                }).addTo(map);
+
+                // Search suggestions functionality
+                searchBox.addEventListener('input', () => {
+                    const searchTerm = searchBox.value.toLowerCase();
+                    searchSuggestions.innerHTML = '';
+                    searchSuggestions.style.display = 'none';
+
+                    if (searchTerm.length > 0) {
+                        const suggestions = data.features.filter(feature =>
+                            feature.properties.ADMIN.toLowerCase().startsWith(searchTerm)
+                        ).map(feature => feature.properties.ADMIN);
+
+                        if (suggestions.length > 0) {
+                            searchSuggestions.style.display = 'block';
+                            suggestions.forEach(suggestion => {
+                                const suggestionDiv = document.createElement('div');
+                                suggestionDiv.textContent = suggestion;
+                                suggestionDiv.addEventListener('click', () => {
+                                    searchBox.value = suggestion;
+                                    searchSuggestions.style.display = 'none';
+                                    triggerSearch(suggestion);
+                                });
+                                searchSuggestions.appendChild(suggestionDiv);
+                            });
+                        }
+                    }
+                });
+
+                // Search functionality
+                searchBox.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const searchTerm = searchBox.value;
+                        triggerSearch(searchTerm);
+                    }
+                });
+
+                const triggerSearch = (searchTerm) => {
+                    let found = false;
+
+                    geoJsonLayer.eachLayer((layer) => {
+                        const countryName = layer.feature.properties.ADMIN.toLowerCase();
+                        if (countryName === searchTerm.toLowerCase()) {
+                            if (highlightedLayer) {
+                                geoJsonLayer.resetStyle(highlightedLayer);
+                            }
+                            map.fitBounds(layer.getBounds());
+                            layer.setStyle({ color: 'yellow', weight: 3 });
+                            highlightedLayer = layer;
+                            found = true;
+
+                            // Trigger click to show details
+                            layer.fire('click');
+                        }
+                    });
+
+                    if (!found) {
+                        alert('Country not found. Please check the spelling.');
+                    }
+                };
+            })
+            .catch(error => console.error('Error loading GeoJSON data:', error));
+
+        // Update tooltip position as the mouse moves
+        map.on('mousemove', (e) => {
+            tooltip.style.left = e.originalEvent.pageX + 10 + 'px';
+            tooltip.style.top = e.originalEvent.pageY + 10 + 'px';
+        });
+    </script>
+</body>
+</html>
